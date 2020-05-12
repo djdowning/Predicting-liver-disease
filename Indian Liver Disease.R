@@ -1,14 +1,14 @@
 ##################################################################
-#LOAD LIBRARIES
+#INSTALL PKGS
 ##################################################################
+
 if(!require(tidyverse)) install.packages("tidyverse") 
-if(!require(tidyverse)) install.packages("caret") 
-if(!require(caret)) install.packages("kableExtra")
-if(!require(ROCR)) install.packages("tidyr")
-if(!require(PRROC)) install.packages("tidyverse")
-if(!require(ROSE)) install.packages("stringr")
-if(!require(xgboost)) install.packages("ggplot2")
-if(!require(kableExtra)) install.packages("gbm")
+if(!require(caret)) install.packages("caret") 
+if(!require(ROCR)) install.packages("ROCR")
+if(!require(PRROC)) install.packages("PRROC")
+if(!require(ROSE)) install.packages("ROSE")
+if(!require(xgboost)) install.packages("xgboost")
+if(!require(kableExtra)) install.packages("kableExtra")
 if(!require(gam)) install.packages("gam")
 if(!require(splines)) install.packages("splines")
 if(!require(foreach)) install.packages("foreach")
@@ -776,9 +776,6 @@ results %>%
                 font_size = 10,
                 full_width = FALSE)
 
-cm["overall",]$naive_bayes
-cm["overall",]$multinom
-
 
 
 
@@ -798,7 +795,7 @@ resamples <- resamples(fits)
 
 #Plot
 dotplot(resamples, metric = "Accuracy")
-resamples$values
+
 #Model Correlations
 #Examine Model Correlations
 modelCor(resamples) %>% 

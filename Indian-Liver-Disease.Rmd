@@ -15,18 +15,18 @@ header-includes:
 knitr::opts_chunk$set(echo = TRUE) 
 knitr::opts_chunk$set(cache = TRUE)
 options(tinytex.verbose = TRUE)
+options()
 
 ```
 
 ```{r, echo=FALSE, include=FALSE, set.seed(1147)}
 if(!require(tidyverse)) install.packages("tidyverse") 
-if(!require(tidyverse)) install.packages("caret") 
-if(!require(caret)) install.packages("kableExtra")
-if(!require(ROCR)) install.packages("tidyr")
-if(!require(PRROC)) install.packages("tidyverse")
-if(!require(ROSE)) install.packages("stringr")
-if(!require(xgboost)) install.packages("ggplot2")
-if(!require(kableExtra)) install.packages("gbm")
+if(!require(caret)) install.packages("caret") 
+if(!require(ROCR)) install.packages("ROCR")
+if(!require(PRROC)) install.packages("PRROC")
+if(!require(ROSE)) install.packages("ROSE")
+if(!require(xgboost)) install.packages("xgboost")
+if(!require(kableExtra)) install.packages("kableExtra")
 if(!require(gam)) install.packages("gam")
 if(!require(splines)) install.packages("splines")
 if(!require(foreach)) install.packages("foreach")
@@ -50,7 +50,6 @@ library(DMwR)
 library(caretEnsemble)
 library(reshape2)
 load("rda/liver.rda")
-options(pillar.sigfig = 5)
 ```
 
 \newpage
