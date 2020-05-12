@@ -1,0 +1,1030 @@
+---
+title: "Classification Machine Learning Predicting Liver Disease"
+author: "Dave Downing"
+date: "5/6/2020"
+output: 
+  pdf_document:
+    toc: true
+    toc_depth: 4
+    number_sections: true
+header-includes:
+- \usepackage{float}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE) 
+knitr::opts_chunk$set(cache = TRUE)
+options(tinytex.verbose = TRUE)
+
+```
+
+```{r, echo=FALSE, include=FALSE, set.seed(1147)}
+library(tidyverse)
+library(tinytex)
+library(kableExtra)
+library(caret)
+library(ROCR)
+library(PRROC)
+library(ROSE)
+library(xgboost)
+library(gam)
+library(splines)
+library(foreach)
+library(ggthemes)
+library(DMwR)
+library(caretEnsemble)
+library(reshape2)
+load("rda/liver.rda")
+options(pillar.sigfig = 5)
+```
+
+\newpage
+
+# Introduction
+
+The purpose of this project is to predict the presence of liver disease from a given set of data. The data set is referred to as the Indian Liver Patient data set made available from the UCI Machine Learning Repository at https://archive.ics.uci.edu/ml/datasets/ILPD+(Indian+Liver+Patient+Dataset. There are a total of 583 rows in the data set and these 11 columns:   
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+tibble(Columns=names(liver)) %>%   
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),
+                position = "center",
+                font_size = 10,
+                full_width = FALSE)
+```
+
+
+The first 10 columns are the variables used for predicting whether or not a patient has liver disease. They include age, gender, and a list of key liver enzymes and proteins.  The Dataset column denotes the outcome and indicates whether or not the patient has liver disease, with 1 indicating liver disease and 2 indicating no liver disease.  For the below graph they will be labeled disease and healthy:  
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+liver %>% group_by(Gender, Age_By_Decade=cut(Age,c(0,10,20,30,40,50,60,70,80,90,100), 
+                  labels = seq(10,100,10)), 
+                   Dataset=ifelse(Dataset=="1","Disease","Healthy")) %>% 
+  ggplot(aes(Age_By_Decade, fill=Dataset)) +
+  geom_bar(position=position_dodge()) +
+  facet_wrap(~ Gender) +
+  ylab("Frequency")
+```
+
+This data set is imbalanced containing 416 patient records with liver disease and only 167 non liver disease patient records.   The goal of this project is to see if there is predictive power in these available variables so that it would be possible to provide better health outcomes for these patients by being able to identify early signs of liver disease.  To measure the success of the models the metrics overall accuracy will be used to determine the success.  We will however look at other metrics such as AUPRC to determine the overall effectiveness of the models picking up on the smaller class of non liver disease patients.
+
+The key steps taken in pursuit of this goal were to inspect and then clean and transform the data and then run it through a series of machine learning algorithms to try to improve the accuracy of liver disease prediction.  The algorithms were also combined together in an ensemble method to see if combining them would help further. Since the data set is more imbalanced towards liver disease patients, four sampling methods (up-sampling, down-sampling, ROSE and SMOTE) were also completed to see if that would help with the prediction accuracy.
+
+Ultimately the size of the data set and the imbalance towards patients with the disease made it very difficult to build a sufficient model.  Generating overall accuracy greater than predicting everyone had the disease was very difficult.  While some success was achieved with some models having an AUPRC greater than **0.85** along with much improved specificity, this was achieved at the the overall expense of the sensitivity metric which caused lower accuracy. Given the importance of detecting the disease this is not an ideal result.  However, multiple models did agree on the importance of total bilirubin.  Expanding the data set significantly, including specifically more of those without liver disease, and re-running the models may prove to be a very significant benefit in improving the models and determining if total bilirubin and the other predictors can be of aid in screening for potential liver disease.
+
+
+
+# Methods / Analysis
+In order to avoid over-fitting our model, the data was split into a training set, **train**,  and a test set, **test**. Only the training set was used to create the models.  The test set was used exclusively for validation of the model results as a control for the predictions.
+
+## Data Processing
+
+### Duplicates
+
+In data science duplicates are a very common problem as they can arise for a whole multitude of reasons.  There are sometimes issues with the computer systems populating the data and there are also potential issues with humans duplicating data on accident as well.  Examining our data we can see we do have a small number of duplicates in our data set:
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+
+sapply(liver, function(x) sum(is.na(x))) %>% 
+  kable(col.names = c("Missing Values")) %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),
+                position = "center",
+                font_size = 10,
+                full_width = FALSE)
+                
+```
+\newpage
+
+Since these records should not be counted more than once as they can adversely affect our models, they must be removed from the data set.
+```{r}
+liver <- unique(liver)
+```
+
+
+### Check for Missing Values
+
+It is also very common in data science to have fields with NULL values.  Searching all of of columns for missing values returns the following results:  
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+sapply(liver, function(x) sum(is.na(x))) %>% 
+  kable(col.names = c("Missing Values")) %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),
+                position = "center",
+                font_size = 10,
+                full_width = FALSE)
+```
+
+The data set is in very good shape with only the Albumin_and_Globulin_Ratio column missing any values at all, and only 4 values missing at that.  Since it is such a small volume of records these records will be removed so that the data set is fully accurate without any statistical replacement.  
+
+```{r}
+liver <- na.omit(liver)
+```
+
+
+
+### Data Types
+
+As discussed above, in this data set a 1 indicates the patient does have liver disease, but a 2 is the value to denote there is not disease.  Converting this to a 0 makes much more sense as we can turn this into a binary.
+
+Likewise, there is a column for Gender which has values of Male and Female.  This value was also hot-encoded into a binary to run through the various machine learning algorithms.  Male is set 1 and Female is set to 0.
+
+```{r}
+
+liver$Dataset <- factor(ifelse(liver$Dataset==2,0,1), levels = c(1,0))
+
+liver$Gender <- factor(ifelse(liver$Gender=="Male",1,0), levels = c(1,0))
+```  
+
+\newpage
+
+### Log Transformation
+
+One of the other common problems in data science is that often the distributions of certain variables are highly skewed.  When this occurs a simple log transformation can be applied to reduce the range of these predictors to limit the effect on the model.  The below is a plot of 
+all of the non-binary predictor variables so that the distributions can be examined:  
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+d <- melt(liver)
+
+ggplot(d,aes(x = value)) + 
+  geom_histogram(fill="blue")  +
+  ylab ("Frequency") +
+  facet_wrap(~variable,scales = "free_x") 
+
+```
+
+The plot shows that Total_Billirubin, Direct_Billirubin, Alkaline_Phospotase, Alamine_Aminotransferase and Aspartate_Aminotransferase will all benefit from a log transformation. 
+
+```{r}
+livertrans <- liver
+
+livertrans$Total_Bilirubin <- log(livertrans$Total_Bilirubin +1)
+livertrans$Direct_Bilirubin <- log(livertrans$Direct_Bilirubin +1)
+livertrans$Alkaline_Phosphotase <- log(livertrans$Alkaline_Phosphotase +1)
+livertrans$Alamine_Aminotransferase <- log(livertrans$Alamine_Aminotransferase +1)
+livertrans$Aspartate_Aminotransferase <- log(livertrans$Aspartate_Aminotransferase +1)
+```
+
+After making the change, the histograms can be re-plotted to see the impact:  
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+d1 <- melt(livertrans)
+
+
+ggplot(d1,aes(x = value)) + 
+  geom_histogram(fill="blue")  +
+  ylab ("Frequency") +
+  facet_wrap(~variable,scales = "free_x") 
+
+```  
+
+\newpage 
+
+### Correlation
+Lastly before we partition the data we can look at the correlations between all of the predictor variables to see if there are any highly correlated predictors.  Here is a heat map of the correlations:  
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+lt <- livertrans[, (3:10)]
+lt <- sapply(lt, as.numeric)
+lower <- function(cormat){
+  cormat[upper.tri(cormat)] <- NA
+  return(cormat)
+  }
+
+upper <- function(cormat){
+  cormat[lower.tri(cormat)]<- NA
+  return(cormat)
+  }
+
+reorder_cormat <- function(cormat){
+  dd <- as.dist((1-cormat)/2)
+  hc <- hclust(dd)
+  cormat <-cormat[hc$order, hc$order]
+  }
+
+corr_matrix <- round(cor(lt),2)
+corr_matrix <- reorder_cormat(corr_matrix)
+upper_tri <- upper(corr_matrix)
+melt_corr_matrix <- melt(upper_tri, na.rm = TRUE)
+ggplot(melt_corr_matrix,aes(Var2, Var1, fill = value)) +
+  geom_tile(color = "white") +
+  scale_fill_gradient2(low = "blue", high = "red", mid = "white", 
+                       midpoint = 0, limit = c(-1,1), space = "Lab", 
+                       name="Pearson\nCorrelation") +
+  theme_minimal() + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 1, 
+                                   size = 9, hjust = 1), axis.text.y = element_text(size = 9),                    axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.border = element_blank(),
+        panel.background = element_blank(),
+        axis.ticks = element_blank()) +
+  coord_fixed()
+```
+
+The map makes it very easy to see that total and direct bilirubin are very highly correlated.  Looking at the just those two values we can see just how correlated they are:
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+cor(lt[,c(1,2)]) %>% 
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),
+                position = "center",
+                font_size = 10,
+                full_width = FALSE)
+```
+
+As they are pretty close to being perfectly correlated one of these variables should be removed from the algorithms.  Here is the average of how highly correlated each variable is with the others.  Since having too much correlation between predictors is not ideal, the variable with less total correlation will be kept and the other will be removed:  
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+cor <- cor(lt) 
+rowMeans(cor[1:2,]) %>%
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),
+                position = "center",
+                font_size = 10,
+                full_width = FALSE)  
+```
+
+Both are very close but direct bilirubin will be removed as a predictor from the machine learning models since it is just a touch more highly correlated with the other variables than total bilirubin.
+
+```{r}
+livertrans <- select (livertrans,-c(Direct_Bilirubin))
+```
+
+
+## Modeling 
+
+Now that the data has been processed for the machine learning algorithms the data can be split into a training set (80%) and a test set (20%) which will be used for validation purposes only.
+
+```{r, message=FALSE, warning=FALSE}
+set.seed(1147, sample.kind = "Rounding")
+test_index <- createDataPartition(y = livertrans$Dataset, times = 1,
+                                  p = 0.2, list = FALSE)
+train <- livertrans[-test_index,]
+test <- livertrans[test_index,]
+```
+
+### Metrics 
+
+To determine the performance of each machine learning algorithm, the following metrics were used.
+
+**Accuracy**
+
+This is just a measure of how many of the algorithm predictions were correct, whether true or false.  
+
+**Sensitivity**
+
+This is a measure of the ability to correctly identify those with the disease (true positives).  
+
+**Specificity**
+
+The next metric included is specificity, which is a measure of the ability to correctly identify those without the disease.  
+
+**F1 Score**
+
+F1 Score is defined as the harmonic average of precision and sensitivity.  Precision is the ratio of correctly predicted positive observations of the total predicted positive observations. Said more simply, recall is simply a measure of everyone that was predicted to have the disease, how many of them actually have it?  The harmonic average of the recall and sensitivity generate the F1 score. This is a good metric since it is accounting for both false positives and false negatives.  
+
+**AUC**
+
+AUC stands for area under the cover.  It provides an measure of performance across all possible classification thresholds. One way of interpreting AUC is as the probability that the model ranks a random positive example more highly than a random negative example.  
+
+**AUPRC**
+
+AUPRC stands for area under the precision recall curve.  PR curves are used to examine the trade-off between the proportion of positively labeled examples that are truly positive (precision) as a function of the proportion of correctly classified positives (sensitivity also known as recall). In particular, PR analysis is preferred to ROC AUC analysis when there is a large imbalance in the data.  
+
+
+### Naive Guessing Everyone
+
+Since this particular data set is skewed toward people with the disease, the simplest way to predict if a patient has liver disease is to simply guess all patients are positive for the disease as a control for the machine learning algorithms.   By doing so below are the results:  
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+set.seed(1147, sample.kind = "Rounding") #in R 3.6 or later 
+predictions <- factor(rep(1,times=length(test$Dataset)),levels=c(1,0))
+predictions1 <- prediction(as.numeric(predictions) , test$Dataset)
+cm <- confusionMatrix(predictions, test$Dataset)
+auc <- performance(predictions1, "auc")
+AUPRC <- performance(predictions1, "prec", "rec")
+aucv <- auc@y.values[[1]]
+
+
+results <- tibble(Method="Guess",
+                  Accuracy=cm$overall["Accuracy"],
+                  Sensitivity= cm$byClass["Sensitivity"], 
+                  Specificity= cm$byClass["Specificity"],
+                  F1= cm$byClass["F1"],
+                  AUC=aucv, 
+                  AUPRC=0)
+
+results %>% kable() %>%
+       kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),
+                position = "center",
+                font_size = 10,
+                full_width = FALSE)
+```
+
+Since 71% of the data set has the disease, of course the accuracy is 71%.  The sensitivity is perfect because we guessed 1 for every single record.  Correspondingly, the specificity is 0 since we didn't guess a single person to not have liver disease.  These will be the benchmarks for each of the machine models to compare against to see how they perform versus this baseline.
+
+### Random Forest
+
+Random forest, like its name implies, consists of a large number of individual decision trees that operate as an ensemble. Each individual tree in the random forest predicts out a class prediction and the class with the most votes becomes the model’s prediction.  Due to these features and the algorithms popularity this was the first algorithm selected to train the data. Ten fold cross validation was repeated ten times and preprocessing was used to center and scale the data.
+
+Here are the results:  
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+set.seed(1147, sample.kind = "Rounding") #in R 3.6 or later 
+control <- trainControl(method="repeatedcv", number = 10, repeats=10, allowParallel = TRUE)
+
+set.seed(1147, sample.kind = "Rounding") #in R 3.6 or later 
+model_rf <- train(Dataset ~ ., 
+        method = "rf", 
+        data = train,
+        trControl = control,
+        preProcess = c("scale", "center"),
+        verboseIter = TRUE)
+
+predictions <- predict(model_rf, test)
+predictions1 <- prediction(as.numeric(predictions) , test$Dataset)
+
+cm <- confusionMatrix(predictions, test$Dataset)
+auc <- performance(predictions1, "auc")
+AUPRC <- performance(predictions1, "prec", "rec")
+aucv <- auc@y.values[[1]]
+AUPRCv <- pr.curve(scores.class0 = predictions[test$Dataset == 1],
+                   scores.class1 = predictions[test$Dataset == 0],
+                   curve=TRUE)
+
+
+results <- bind_rows(results,
+                     tibble(Method="RF",
+                            Accuracy=cm$overall["Accuracy"],
+                            Sensitivity= cm$byClass["Sensitivity"], 
+                            Specificity= cm$byClass["Specificity"], 
+                            F1= cm$byClass["F1"], 
+                            AUC=aucv, 
+                            AUPRC=AUPRCv[[3]]))
+                     
+results %>% 
+  kable() %>%
+   kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),
+                 position = "center",
+                 font_size = 10,
+                 full_width = FALSE)
+``` 
+
+The random forest was able to generate a AUPRC of **0.712.**  The overall accuracy however is actually lower than just guessing that everyone has the disease.  The sensitivity did improve from the 0 generated from the guessing model but it is still quite low at **0.121**.
+
+#### Over (Up) Sampling
+One of the great features of random forests is that we also have the option to add a sampling component to help control for unbalanced data sets.  With over-sampling, we randomly duplicate samples from the class with fewer records so that the number of samples in each class match. While losing information is avoided by taking this approach, the risk of over-fitting the model is possible. Therefore cross-validation is necessary on each fold independently to get an honest estimate of the model performance.  Below our the results of this approach:
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+set.seed(1147, sample.kind = "Rounding") #in R 3.6 or later 
+control <- trainControl(method="repeatedcv", 
+                        number = 10, 
+                        repeats=10, 
+                        allowParallel = TRUE,
+                        sampling = "up")
+set.seed(1147, sample.kind = "Rounding") #in R 3.6 or later 
+model_rf_up <- train(Dataset ~ ., 
+                  method = "rf", 
+                  data = train,
+                  trControl = control,
+                  preProcess = c("scale", "center"),
+                  verboseIter = TRUE
+                  )
+
+predictions <- predict(model_rf_up, test)
+predictions1 <- prediction(as.numeric(predictions) , test$Dataset)
+
+cm <- confusionMatrix(predictions, test$Dataset)
+auc <- performance(predictions1, "auc")
+AUPRC <- performance(predictions1, "prec", "rec")
+aucv <- auc@y.values[[1]]
+AUPRCv <- pr.curve(scores.class0 = predictions[test$Dataset == 1],
+                   scores.class1 = predictions[test$Dataset == 0],
+                   curve=TRUE)
+
+
+results <- bind_rows(results,
+                     tibble(Method="RF - Up",
+                            Accuracy=cm$overall["Accuracy"],
+                            Sensitivity= cm$byClass["Sensitivity"], 
+                            Specificity= cm$byClass["Specificity"],
+                            F1= cm$byClass["F1"], 
+                            AUC=aucv, 
+                            AUPRC=AUPRCv[[3]]))
+
+results %>% 
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),
+                position = "center",
+                font_size = 10,
+                full_width = FALSE)
+```  
+
+With the over-sampling approach, the overall AUPRC is less than the original random forest at **0.647.**  The effect of the sampling can be clearly seen looking at the sensitivity and specificity.  The specificity markedly increases from **0.121** to **0.364**, but this was at the expense of the sensitivity which correspondingly decreased from **0.877** to **0.815.**
+
+#### Under (Down) Sampling
+With under-sampling, a subset of samples from the class with more instances are randomly selected to match the number of samples coming from the class. The main concern with under-sampling is that we lose potentially lose out on information from the removed samples.  Just like with oversampling, cross-validation is thus necessary on each fold independently to control for this.  Below our the results of this method:  
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+set.seed(1147, sample.kind = "Rounding") #in R 3.6 or later 
+control <- trainControl(method="repeatedcv", 
+                        number = 10, 
+                        repeats=10, 
+                        allowParallel = TRUE,
+                        sampling = "down")
+set.seed(1147, sample.kind = "Rounding") #in R 3.6 or later 
+model_rf_down <- train(Dataset ~ ., 
+                     method = "rf", 
+                     data = train,
+                     trControl = control,
+                     preProcess = c("scale", "center"),
+                     verboseIter = TRUE
+)
+
+predictions <- predict(model_rf_down, test)
+predictions1 <- prediction(as.numeric(predictions) , test$Dataset)
+
+cm <- confusionMatrix(predictions, test$Dataset)
+auc <- performance(predictions1, "auc")
+AUPRC <- performance(predictions1, "prec", "rec")
+aucv <- auc@y.values[[1]]
+AUPRCv <- pr.curve(scores.class0 = predictions[test$Dataset == 1],
+                   scores.class1 = predictions[test$Dataset == 0],
+                   curve=TRUE)
+
+
+results <- bind_rows(results,
+                     tibble(Method="RF - Down",
+                            Accuracy=cm$overall["Accuracy"],
+                            Sensitivity= cm$byClass["Sensitivity"], 
+                            Specificity= cm$byClass["Specificity"], 
+                            F1= cm$byClass["F1"], 
+                            AUC=aucv, 
+                            AUPRC=AUPRCv[[3]]))
+
+results %>% 
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),
+                position = "center",
+                font_size = 10,
+                full_width = FALSE)
+```
+Under-sampling really shows the effect that sampling can have on an unbalanced data set, as the specificity skyrockets all the way up to **0.758.** Unfortunately, the sensitivity falls down to **0.667.** The AUPRC also falls considerably to **0.599.**  
+
+#### ROSE Sampling
+The ROSE sampling approach is a hybrid method.  Artificial balanced samples are generated according to a smoothed bootstrap approach to help deal with unbalanced data.  Below are the results from this method:  
+
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+set.seed(1147, sample.kind = "Rounding") #in R 3.6 or later 
+control <- trainControl(method="repeatedcv", 
+                        number = 10, 
+                        repeats=10, 
+                        allowParallel = TRUE,
+                        sampling = "rose")
+set.seed(1147, sample.kind = "Rounding") #in R 3.6 or later 
+model_rf_rose <- train(Dataset ~ ., 
+                       method = "rf", 
+                       data = train,
+                       trControl = control,
+                       preProcess = c("scale", "center"),
+                       verboseIter = TRUE
+                       )
+
+predictions <- predict(model_rf_rose, test)
+predictions1 <- prediction(as.numeric(predictions) , test$Dataset)
+
+cm <- confusionMatrix(predictions, test$Dataset)
+auc <- performance(predictions1, "auc")
+AUPRC <- performance(predictions1, "prec", "rec")
+aucv <- auc@y.values[[1]]
+AUPRCv <- pr.curve(scores.class0 = predictions[test$Dataset == 1],
+                   scores.class1 = predictions[test$Dataset == 0],
+                   curve=TRUE)
+
+
+results <- bind_rows(results,
+                     tibble(Method="RF - ROSE",
+                            Accuracy=cm$overall["Accuracy"],
+                            Sensitivity= cm$byClass["Sensitivity"], 
+                            Specificity= cm$byClass["Specificity"], 
+                            F1= cm$byClass["F1"], 
+                            AUC=aucv, 
+                            AUPRC=AUPRCv[[3]]))
+
+results %>% 
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),
+                position = "center",
+                font_size = 10,
+                full_width = FALSE)
+```  
+The ROSE sampling approach had an even stronger effect on increasing the specificity **(0.818**), but also had the strongest effect on decreasing the sensitivity  to **0.543.** The overall AUPRC **(0.621)** did increase back up versus the under-sampling method, but is still considerably less than over-sampling and original random forest models.
+
+#### SMOTE Sampling
+The SMOTE sampling approach is another hybrid method.  A combination of of over-sampling the minority class and under-sampling the majority class is sued to try to achieve a better classifier performance in AUC space.  Over-sampling the minority class involves creating synthetic minority class examples in order to achieve this.  Here are the results from the random forest with SMOTE sampling:  
+
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+control <- trainControl(method="repeatedcv", 
+                        number = 10, 
+                        repeats=10, 
+                        allowParallel = TRUE,
+                        sampling = "smote")
+set.seed(1147, sample.kind = "Rounding") #in R 3.6 or later 
+model_rf_smote <- train(Dataset ~ ., 
+                       method = "rf", 
+                       data = train,
+                       trControl = control,
+                       preProcess = c("scale", "center"),
+                       verboseIter = TRUE
+                       )
+
+predictions <- predict(model_rf_smote, test)
+predictions1 <- prediction(as.numeric(predictions) , test$Dataset)
+
+cm <- confusionMatrix(predictions, test$Dataset)
+auc <- performance(predictions1, "auc")
+AUPRC <- performance(predictions1, "prec", "rec")
+aucv <- auc@y.values[[1]]
+AUPRCv <- pr.curve(scores.class0 = predictions[test$Dataset == 1],
+                   scores.class1 = predictions[test$Dataset == 0],
+                   curve=TRUE)
+
+
+results <- bind_rows(results,
+                     tibble(Method="Random Forest - SMOTE",
+                            Accuracy=cm$overall["Accuracy"],
+                            Sensitivity= cm$byClass["Sensitivity"], 
+                            Specificity= cm$byClass["Specificity"], 
+                            F1= cm$byClass["F1"], 
+                            AUC=aucv, 
+                            AUPRC=AUPRCv[[3]]))
+
+results %>% 
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),
+                position = "center",
+                font_size = 10,
+                full_width = FALSE)
+```
+The SMOTE sampling approach generated the highest accuracy of the random forest approaches at **0.702**, but unfortunately the AUPRC was the second lowest at **0.610.**
+
+
+### Logistic Regression
+Since we have a binary outcome and not that many features compare to the size of the data set a logistic regression was a very obvious choice due to its well-known and long-standing reputation.  The following output shows the performance:
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+set.seed(1147, sample.kind = "Rounding") #in R 3.6 or later 
+model_glm <- train(Dataset ~ ., method = "glm", data = train)
+
+predictions <- predict(model_glm, test)
+predictions1 <- prediction(as.numeric(predictions) , test$Dataset)
+
+cm <- confusionMatrix(predictions, test$Dataset)
+auc <- performance(predictions1, "auc")
+AUPRC <- performance(predictions1, "prec", "rec")
+aucv <- auc@y.values[[1]]
+AUPRCv <- pr.curve(scores.class0 = predictions[test$Dataset == 1],
+                   scores.class1 = predictions[test$Dataset == 0],
+                   curve=TRUE)
+
+
+results <- bind_rows(results,
+                     tibble(Method="GLM",
+                            Accuracy=cm$overall["Accuracy"],
+                            Sensitivity= cm$byClass["Sensitivity"], 
+                            Specificity= cm$byClass["Specificity"], 
+                            F1= cm$byClass["F1"], 
+                            AUC=aucv, 
+                            AUPRC=AUPRCv[[3]]))
+
+results %>% 
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),
+                position = "center",
+                font_size = 10,
+                full_width = FALSE)
+```
+
+The logistic regression generates an AUPRC higher than all but our original random forest model, however it did best that model in overall accuracy.
+
+
+### K-Nearest Neighbors
+The KNN was chosen as it is also very widely recognized and its approach differs from some of the others chosen so far.  This algorithm assumes that similar things exist in close proximity to each other. In other words, similar things are near to each other.  A tune grid with seq(1,100,4) was used to optimize for k.  Below are the results of how KNN performed on this data set:
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+set.seed(1147, sample.kind = "Rounding") #in R 3.6 or later 
+control <- trainControl(method ="CV", 
+                        number = 10
+                        )
+set.seed(1147, sample.kind = "Rounding") #in R 3.6 or later 
+model_knn <- train(Dataset ~ ., 
+                   method = "knn", 
+                   data = train,
+                   trControl = control,
+                   preProcess = c("scale", "center"),
+                   tuneGrid = data.frame(k = seq(1,100,4))
+                   )
+
+
+predictions <- predict(model_knn, test)
+predictions1 <- prediction(as.numeric(predictions) , test$Dataset)
+
+cm <- confusionMatrix(predictions, test$Dataset)
+auc <- performance(predictions1, "auc")
+AUPRC <- performance(predictions1, "prec", "rec")
+aucv <- auc@y.values[[1]]
+AUPRCv <- pr.curve(scores.class0 = predictions[test$Dataset == 1],
+                   scores.class1 = predictions[test$Dataset == 0],
+                   curve=TRUE)
+
+
+results <- bind_rows(results,
+                     tibble(Method="KNN",
+                            Accuracy=cm$overall["Accuracy"],
+                            Sensitivity= cm$byClass["Sensitivity"], 
+                            Specificity= cm$byClass["Specificity"], 
+                            F1= cm$byClass["F1"], 
+                            AUC=aucv, 
+                            AUPRC=AUPRCv[[3]]))
+
+results %>% 
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),
+                position = "center",
+                font_size = 10,
+                full_width = FALSE)
+```
+The KNN model bettered the AUC from the logistic regression, moving into second place behind the original random forest in AUPRC at **0.689.**  It's accuracy of **0.711** is the best of the machine learning models, however this just ties it with naively guessing everyone has the disease.  This is because this model guesses very strongly that most have the disease, with a sensitivity of **0.975** but a specificity not much better than our naive model at **0.061.**
+
+
+### An Ensemble Approach
+To see if significant improvement would be be possible by taking an ensemble approach, a multitude of new models were selected and run through a function to see which performed best.  LDA, QDA, Naive Bayes, SVM, Loess, Rpart, Multinom and ADABoost were all selected in addition to Random Forest, XGBoost and GLM from above.  The default caret tuning will be applied for these models.  After running the models, 25 resamples will be taken to avoid over-fitting and the 95% confidence interval of accuracy of each models resamples will be measured.  This will give a very nice visual to see which models performed the best.
+
+Here are the metrics for all of the models:  
+
+```{r, include=FALSE}
+models <- c("glm", "rpart", "lda", "naive_bayes", "svmLinear", "gamLoess", "multinom", "qda", "rf", "adaboost", "xgbTree")
+
+set.seed(1147, sample.kind = "Rounding") #in R 3.6 or later 
+fits <- lapply(models, function(model){ 
+  print(model)
+  train(Dataset ~ ., method = model, data = train)
+})
+
+names(fits) <- models
+
+pred <- sapply(fits, function(object) 
+  predict(object, newdata = test))
+
+predictions1 <- sapply(models, function(d) prediction(as.numeric(pred[,d]) , test$Dataset))
+cm <- sapply(models, function(p) confusionMatrix(factor(pred[,p],levels=c(1,0)), test$Dataset))
+
+#Multinom
+auc <- performance(predictions1$multinom, "auc")
+AUPRC <- performance(predictions1$multinom, "prec", "rec")
+aucv <- auc@y.values[[1]]
+AUPRCv <- pr.curve(scores.class0 = as.numeric(pred[,"multinom"])[test$Dataset == 1],
+                   scores.class1 = as.numeric(pred[,"multinom"])[test$Dataset == 0],
+                   curve=TRUE)
+
+
+
+results <- bind_rows(results,
+                     tibble(Method="Multinom",
+                            Accuracy=cm["overall",]$multinom["Accuracy"],
+                            Sensitivity= cm["byClass",]$multinom["Sensitivity"], 
+                            Specificity= cm["byClass",]$multinom["Specificity"], 
+                            F1= cm["byClass",]$multinom["F1"], 
+                            AUC=aucv, 
+                            AUPRC=AUPRCv[[3]]))
+
+
+#LDA
+auc <- performance(predictions1$lda, "auc")
+AUPRC <- performance(predictions1$lda, "prec", "rec")
+aucv <- auc@y.values[[1]]
+AUPRCv <- pr.curve(scores.class0 = as.numeric(pred[,"lda"])[test$Dataset == 1],
+                   scores.class1 = as.numeric(pred[,"lda"])[test$Dataset == 0],
+                   curve=TRUE)
+
+
+results <- bind_rows(results,
+                     tibble(Method="LDA",
+                            Accuracy=cm["overall",]$lda["Accuracy"],
+                            Sensitivity= cm["byClass",]$lda["Sensitivity"], 
+                            Specificity= cm["byClass",]$lda["Specificity"], 
+                            F1= cm["byClass",]$lda["F1"], 
+                            AUC=aucv, 
+                            AUPRC=AUPRCv[[3]]))
+
+#Adaboost
+auc <- performance(predictions1$adaboost, "auc")
+AUPRC <- performance(predictions1$adaboost, "prec", "rec")
+aucv <- auc@y.values[[1]]
+AUPRCv <- pr.curve(scores.class0 = as.numeric(pred[,"adaboost"])[test$Dataset == 1],
+                   scores.class1 = as.numeric(pred[,"adaboost"])[test$Dataset == 0],
+                   curve=TRUE)
+
+results <- bind_rows(results,
+                     tibble(Method="Adaboost",
+                            Accuracy=cm["overall",]$adaboost["Accuracy"],
+                            Sensitivity= cm["byClass",]$adaboost["Sensitivity"], 
+                            Specificity= cm["byClass",]$adaboost["Specificity"], 
+                            F1= cm["byClass",]$adaboost["F1"], 
+                            AUC=aucv, 
+                            AUPRC=AUPRCv[[3]]))
+
+
+#SVM
+auc <- performance(predictions1$svmLinear, "auc")
+AUPRC <- performance(predictions1$svmLinear, "prec", "rec")
+AUPRC
+aucv <- auc@y.values[[1]]
+#AUPRCv <- pr.curve(scores.class0 = as.numeric(pred[,"svmLinear"])[test$Dataset == 1],
+#                   scores.class1 = as.numeric(pred[,"svmLinear"])[test$Dataset == 0],
+#                   curve=TRUE)
+
+
+results <- bind_rows(results,
+                     tibble(Method="SvmLinear",
+                            Accuracy=cm["overall",]$svmLinear["Accuracy"],
+                            Sensitivity= cm["byClass",]$svmLinear["Sensitivity"], 
+                            Specificity= cm["byClass",]$svmLinear["Specificity"], 
+                            F1= cm["byClass",]$svmLinear["F1"], 
+                            AUC=aucv, 
+                            AUPRC=0))
+
+
+
+#rpart
+auc <- performance(predictions1$rpart, "auc")
+AUPRC <- performance(predictions1$rpart, "prec", "rec")
+AUPRC
+aucv <- auc@y.values[[1]]
+AUPRCv <- pr.curve(scores.class0 = as.numeric(pred[,"rpart"])[test$Dataset == 1],
+                   scores.class1 = as.numeric(pred[,"rpart"])[test$Dataset == 0],
+                   curve=TRUE)
+
+
+results <- bind_rows(results,
+                     tibble(Method="Rpart",
+                            Accuracy=cm["overall",]$rpart["Accuracy"],
+                            Sensitivity= cm["byClass",]$rpart["Sensitivity"], 
+                            Specificity= cm["byClass",]$rpart["Specificity"], 
+                            F1= cm["byClass",]$rpart["F1"], 
+                            AUC=aucv, 
+                            AUPRC=AUPRCv[[3]]))
+
+
+#gamLoess
+auc <- performance(predictions1$gamLoess, "auc")
+AUPRC <- performance(predictions1$gamLoess, "prec", "rec")
+AUPRC
+aucv <- auc@y.values[[1]]
+AUPRCv <- pr.curve(scores.class0 = as.numeric(pred[,"gamLoess"])[test$Dataset == 1],
+                   scores.class1 = as.numeric(pred[,"gamLoess"])[test$Dataset == 0],
+                   curve=TRUE)
+
+
+results <- bind_rows(results,
+                     tibble(Method="GamLoess",
+                            Accuracy=cm["overall",]$gamLoess["Accuracy"],
+                            Sensitivity= cm["byClass",]$gamLoess["Sensitivity"], 
+                            Specificity= cm["byClass",]$gamLoess["Specificity"], 
+                            F1= cm["byClass",]$gamLoess["F1"], 
+                            AUC=aucv, 
+                            AUPRC=AUPRCv[[3]]))
+
+
+#qda
+auc <- performance(predictions1$qda, "auc")
+AUPRC <- performance(predictions1$qda, "prec", "rec")
+AUPRC
+aucv <- auc@y.values[[1]]
+AUPRCv <- pr.curve(scores.class0 = as.numeric(pred[,"qda"])[test$Dataset == 1],
+                   scores.class1 = as.numeric(pred[,"qda"])[test$Dataset == 0],
+                   curve=TRUE)
+
+
+results <- bind_rows(results,
+                     tibble(Method="QDA",
+                            Accuracy=cm["overall",]$qda["Accuracy"],
+                            Sensitivity= cm["byClass",]$qda["Sensitivity"], 
+                            Specificity= cm["byClass",]$qda["Specificity"], 
+                            F1= cm["byClass",]$qda["F1"], 
+                            AUC=aucv, 
+                            AUPRC=AUPRCv[[3]]))
+
+#xgbTree
+auc <- performance(predictions1$xgbTree, "auc")
+AUPRC <- performance(predictions1$xgbTree, "prec", "rec")
+AUPRC
+aucv <- auc@y.values[[1]]
+AUPRCv <- pr.curve(scores.class0 = as.numeric(pred[,"xgbTree"])[test$Dataset == 1],
+                   scores.class1 = as.numeric(pred[,"xgbTree"])[test$Dataset == 0],
+                   curve=TRUE)
+
+
+results <- bind_rows(results,
+                     tibble(Method="XGBTree",
+                            Accuracy=cm["overall",]$xgbTree["Accuracy"],
+                            Sensitivity= cm["byClass",]$xgbTree["Sensitivity"], 
+                            Specificity= cm["byClass",]$xgbTree["Specificity"], 
+                            F1= cm["byClass",]$xgbTree["F1"], 
+                            AUC=aucv, 
+                            AUPRC=AUPRCv[[3]]))
+
+
+#naive_bayes
+auc <- performance(predictions1$naive_bayes, "auc")
+AUPRC <- performance(predictions1$naive_bayes, "prec", "rec")
+AUPRC
+aucv <- auc@y.values[[1]]
+AUPRCv <- pr.curve(scores.class0 = as.numeric(pred[,"naive_bayes"])[test$Dataset == 1],
+                   scores.class1 = as.numeric(pred[,"naive_bayes"])[test$Dataset == 0],
+                   curve=TRUE)
+
+
+results <- bind_rows(results,
+                     tibble(Method="Naive Bayes",
+                            Accuracy=cm["overall",]$naive_bayes["Accuracy"],
+                            Sensitivity= cm["byClass",]$naive_bayes["Sensitivity"], 
+                            Specificity= cm["byClass",]$naive_bayes["Specificity"], 
+                            F1= cm["byClass",]$naive_bayes["F1"], 
+                            AUC=aucv, 
+                            AUPRC=AUPRCv[[3]]))
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+results %>% 
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),
+                position = "center",
+                font_size = 10,
+                full_width = FALSE)
+
+```
+
+
+There is some very strong performance from some of the models with Naive Bayes and QDA producing AUPRC numbers over **0.855.**  However, these improvements come at the expense of the sensitivity metrics which is not good when the focus is on trying to detect disease.  There is some better performance on our overall accuracy, and While it would be tempting to only select these best models for the ensemble, care needs to be taken to avoid over-fitting.  Instead, 25 resamples from each of the models can be taken to see how the accuracy compares by method to avoid this danger of over-fitting.  
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, results=FALSE}
+set.seed(1147, sample.kind = "Rounding") #in R 3.6 or later 
+resamples <- resamples(fits)
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+dotplot(resamples, metric = "Accuracy", main="Ensemble Resamples by Method")
+```  
+
+We can see when looking at the resamples that multinom actually does very well, with the lower end of its 95% confidence interval outperforming the median of the 95% confidence interval of all of the other model's resamples.
+
+Now these top six performing models based on the accuracy confidence intervals (glm, lda, multinom,  svmLinear, adaboost and gamLoess) can be used to create the ensemble.  First, the models are examined to see if they are very highly correlated with each other as using very highly correlated models is not advised:  
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, results=FALSE}
+models <- c("multinom", "glm", "lda", "rf", "adaboost",   "svmLinear")
+set.seed(1147, sample.kind = "Rounding") #in R 3.6 or later 
+fits <- lapply(models, function(model){ 
+  print(model)
+  train(Dataset ~ ., method = model, data = train)
+})
+
+names(fits) <- models
+resamples <- resamples(fits)
+```
+
+```{r,echo=FALSE,message=FALSE, warning=FALSE}
+modelCor(resamples) %>%
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),
+                position = "center",
+                font_size = 10,
+                full_width = FALSE)
+```
+Since there are no concerns with high correlation, an ensemble model can be created and the results are below: 
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+pred <- sapply(fits, function(object) 
+  predict(object, newdata = test))
+
+acc <- colMeans(pred == test$Dataset)
+votes <- rowMeans(pred == "1")
+y_hat <- ifelse(votes > 0.5, "1", "0")
+
+cm <-confusionMatrix(factor(y_hat,levels=c(1,0)), test$Dataset)
+predictions1 <- prediction(as.numeric(y_hat) , test$Dataset)
+
+auc <- performance(predictions1, "auc")
+AUPRC <- performance(predictions1, "prec", "rec")
+aucv <- auc@y.values[[1]]
+AUPRCv <- pr.curve(scores.class0 = as.numeric(y_hat)[test$Dataset == 1],
+                   scores.class1 = as.numeric(y_hat)[test$Dataset == 0],
+                   curve=TRUE)
+
+
+results <- bind_rows(results,
+                     tibble(Method="Ensemble",
+                            Accuracy=cm$overall["Accuracy"],
+                            Sensitivity= cm$byClass["Sensitivity"], 
+                            Specificity= cm$byClass["Specificity"], 
+                            F1= cm$byClass["F1"], 
+                            AUC=aucv, 
+                            AUPRC=AUPRCv[[3]]))
+
+results %>% 
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),
+                position = "center",
+                font_size = 10,
+                full_width = FALSE)
+```
+
+
+\newpage 
+
+# Results
+Here are the results of the metrics for each of the models we examined:  
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+
+results %>% select (Method, Accuracy, Sensitivity, Specificity, AUPRC) %>%
+  gather("Type", "Value",-Method) %>%
+  ggplot(aes(Method, Value, fill = Type)) +
+  geom_col(position = "dodge") +
+  theme_bw()+
+  facet_wrap(~Method,scales = "free_x")
+
+
+
+results %>% 
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),
+                position = "center",
+                font_size = 10,
+                full_width = FALSE)
+```
+
+
+The difficulty with the data can easily be seen looking at the combined accuracy results.  The control of just assigning everyone to have a positive liver disease status was about as effective as any of our model attempts.  The svmLinear model ended up just guessing everyone has the disease just like the naive control!  There are some bright spots, with some significant improvements in specificity and AUPRC by using some of the methods discussed to counter the imbalance in the data set.  However, since the purpose of the model was to help identify those with liver disease, sensitivity is of vital importance.  You can really see the trade off in metrics by examining the correlation between each of the metrics used for all of the models.  
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+results1 <-  sapply(results[2:7], as.numeric)
+corr_matrix <- round(cor(results1),2)
+corr_matrix <- reorder_cormat(corr_matrix)
+upper_tri <- upper(corr_matrix)
+melt_corr_matrix <- melt(upper_tri, na.rm = TRUE)
+ggplot(melt_corr_matrix,aes(Var2, Var1, fill = value)) +
+  geom_tile(color = "white") +
+  scale_fill_gradient2(low = "blue", high = "red", mid = "white", 
+                       midpoint = 0, limit = c(-1,1), space = "Lab", 
+                       name="Pearson\nCorrelation") +
+  theme_minimal() + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 1, 
+                                   size = 9, hjust = 1), axis.text.y = element_text(size = 9),                    axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.border = element_blank(),
+        panel.background = element_blank(),
+        axis.ticks = element_blank()) +
+  coord_fixed()
+```
+
+The difficulties with the size and balance of our data can further be seen by looking at variable importance.  Take a look at this table showing the variable importance of our models from multinom, random forest and logistic regression (glm):
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+imp <- varImp(fits$multinom)
+imp1 <- varImp(model_glm)
+imp2 <- varImp(model_rf)
+
+a <- tibble(term = rownames(imp$importance), 
+           importance = imp$importance$Overall) %>%
+  mutate(rank = rank(-importance)) %>% arrange(desc(importance)) 
+
+a1 <- tibble(term = rownames(imp1$importance), 
+                 importance = imp1$importance$Overall) %>%
+  mutate(rank = rank(-importance)) %>% arrange(desc(importance)) 
+
+a2 <- tibble(term = rownames(imp2$importance), 
+                 importance = imp2$importance$Overall) %>%
+  mutate(rank = rank(-importance)) %>% arrange(desc(importance)) 
+
+
+a3 <- inner_join(a,a1, by="term")
+a4 <- inner_join(a3, a2, by="term")
+a4 <- a4 %>% rename(imp.multi = importance.x, imp.glm=importance.y, imp.rf=importance,
+                    rank.multi = rank.x, rank.glm = rank.y, rank.rf=rank)
+
+a4  %>% select (term, imp.multi, imp.glm, imp.rf) %>%
+  gather("Type", "Value",-term) %>%
+  ggplot(aes(term, Value, fill = Type)) +
+  geom_col(position = "dodge") +
+  theme_bw()+
+  facet_wrap(~term,scales = "free_x") +
+  ggtitle("Variable Importance - GLM, Multi & RF")
+```
+Unfortunately this clearly shows that some of the predictors that are most important to some of our models are not very important at all to some of the others.  However, there are some very interesting positives, most notably total bilirubin, which is deemed to be very important across all three of these models.  This could be a very important predictor and further data is needed to verify this possibility.
+
+# Conclusion
+As the results show, it is very difficult to use any of the models in their current state.  However, the data set contains many more patients positive with liver disease than those without. Since there are many more individuals that do not have liver disease than those that do in the world population, it is very possible to greatly expand this data set and make it imbalanced in the opposite direction.  This approach could prove highly effective in determining the most important variables in detecting liver disease and perhaps be used as a screening method to identify high risk patients.  With the high degree of importance placed on total bilirubin across multiple models, expanding this data set in this manner to further investigate is highly advised.  
+
+
