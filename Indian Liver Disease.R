@@ -1,3 +1,21 @@
+##################################################################
+#LOAD LIBRARIES
+##################################################################
+if(!require(tidyverse)) install.packages("tidyverse") 
+if(!require(tidyverse)) install.packages("caret") 
+if(!require(caret)) install.packages("kableExtra")
+if(!require(ROCR)) install.packages("tidyr")
+if(!require(PRROC)) install.packages("tidyverse")
+if(!require(ROSE)) install.packages("stringr")
+if(!require(xgboost)) install.packages("ggplot2")
+if(!require(kableExtra)) install.packages("gbm")
+if(!require(gam)) install.packages("gam")
+if(!require(splines)) install.packages("splines")
+if(!require(foreach)) install.packages("foreach")
+if(!require(ggthemes)) install.packages("ggthemes")
+if(!require(DMwR)) install.packages("DMwR")
+if(!require(caretEnsemble)) install.packages("caretEnsemble")
+if(!require(reshape2)) install.packages("reshape2")
 
 ##################################################################
 #LOAD LIBRARIES
@@ -15,6 +33,8 @@ library(foreach)
 library(ggthemes)
 library(DMwR)
 library(caretEnsemble)
+library(reshape2)
+
 ##################################################################
 #LOAD DATA
 ##################################################################
