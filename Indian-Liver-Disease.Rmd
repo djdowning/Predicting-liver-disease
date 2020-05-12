@@ -1002,7 +1002,7 @@ ggplot(melt_corr_matrix,aes(Var2, Var1, fill = value)) +
   coord_fixed()
 ```
 
-The difficulties with the size and balance of our data can further be seen by looking at variable importance.  Take a look at this table showing the variable importance of our models from multinom, random forest and logistic regression (glm):
+The difficulties with the size and balance of our data can further be seen by looking at variable importance.  Take a look at this graph showing the variable importance of our models from multinom, random forest and logistic regression (glm):
 
 ```{r, echo=FALSE, message=FALSE, warning=FALSE}
 imp <- varImp(fits$multinom)
