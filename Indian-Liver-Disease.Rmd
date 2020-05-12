@@ -15,7 +15,6 @@ header-includes:
 knitr::opts_chunk$set(echo = TRUE) 
 knitr::opts_chunk$set(cache = TRUE)
 options(tinytex.verbose = TRUE)
-options()
 
 ```
 
@@ -98,8 +97,8 @@ In data science duplicates are a very common problem as they can arise for a who
 
 ```{r, echo=FALSE, message=FALSE, warning=FALSE}
 
-sapply(liver, function(x) sum(is.na(x))) %>% 
-  kable(col.names = c("Missing Values")) %>%
+liver %>% group_by(duplicated(liver)) %>% summarize(Count = n())  %>%
+  kable() %>%
   kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),
                 position = "center",
                 font_size = 10,
@@ -668,7 +667,7 @@ results %>%
                 font_size = 10,
                 full_width = FALSE)
 ```
-The KNN model bettered the AUC from the logistic regression, moving into second place behind the original random forest in AUPRC at **0.689.**  It's accuracy of **0.711** is the best of the machine learning models, however this just ties it with naively guessing everyone has the disease.  This is because this model guesses very strongly that most have the disease, with a sensitivity of **0.975** but a specificity not much better than our naive model at **0.061.**
+The KNN model bettered the AUC from the logistic regression, moving into second place behind the original random forest in AUPRC at **0.687.**  It's accuracy of **0.711** is the best of the machine learning models, however this just ties it with naively guessing everyone has the disease.  This is because this model guesses very strongly that most have the disease, with a sensitivity of **0.975** but a specificity not much better than our naive model at **0.061.**
 
 
 ### An Ensemble Approach
@@ -880,7 +879,7 @@ results %>%
 ```
 
 
-There is some very strong performance from some of the models with Naive Bayes and QDA producing AUPRC numbers over **0.855.**  However, these improvements come at the expense of the sensitivity metrics which is not good when the focus is on trying to detect disease.  There is some better performance on our overall accuracy, and While it would be tempting to only select these best models for the ensemble, care needs to be taken to avoid over-fitting.  Instead, 25 resamples from each of the models can be taken to see how the accuracy compares by method to avoid this danger of over-fitting.  
+There is some very strong performance from some of the models with Naive Bayes and QDA producing AUPRC numbers over **0.855.**  However, these improvements come at the expense of the sensitivity metrics which is not good when the focus is on trying to detect disease.  There is some better performance on our overall accuracy, and while it would be tempting to only select these best models for the ensemble, care needs to be taken to avoid over-fitting.  Instead, 25 resamples from each of the models can be taken to see how the accuracy compares by method to avoid this danger of over-fitting.  
 
 ```{r, echo=FALSE, message=FALSE, warning=FALSE, results=FALSE}
 set.seed(1147, sample.kind = "Rounding") #in R 3.6 or later 

@@ -80,7 +80,7 @@ liver %>% group_by(duplicated(liver)) %>% summarize(Count = n())  %>%
                 full_width = FALSE)
 
 liver <- unique(liver)
-length(liver$Age)
+
 
 #Check for missing values
 sapply(liver, function(x) sum(is.na(x))) %>% 
