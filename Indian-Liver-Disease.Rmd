@@ -892,7 +892,7 @@ dotplot(resamples, metric = "Accuracy", main="Ensemble Resamples by Method")
 
 We can see when looking at the resamples that multinom actually does very well, with the lower end of its 95% confidence interval outperforming the median of the 95% confidence interval of all of the other model's resamples.
 
-Now these top six performing models based on the accuracy confidence intervals (glm, lda, multinom,  svmLinear, adaboost and gamLoess) can be used to create the ensemble.  First, the models are examined to see if they are very highly correlated with each other as using very highly correlated models is not advised:  
+Now these top six performing models based on the accuracy confidence intervals (multinom, glm, lda, rf, adaboost and svmLinear) can be used to create the ensemble.  First, the models are examined to see if they are very highly correlated with each other as using very highly correlated models is not advised:  
 
 ```{r, echo=FALSE, message=FALSE, warning=FALSE, results=FALSE}
 models <- c("multinom", "glm", "lda", "rf", "adaboost",   "svmLinear")
