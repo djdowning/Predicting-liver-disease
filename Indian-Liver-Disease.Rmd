@@ -447,7 +447,7 @@ results %>%
                 full_width = FALSE)
 ```  
 
-And these are the most important variables from the over-sampling random forest:
+And these are the most important variables from the over-sampling random forest.  Note here total bilirubin in the top spot.
 
 ```{r, echo=FALSE, message=FALSE, warning=FALSE}
 imprfu <- varImp(model_rf_up)  
