@@ -383,6 +383,22 @@ results %>%
 
 The random forest was able to generate a AUPRC of **0.712.**  The overall accuracy however is actually lower than just guessing that everyone has the disease.  The sensitivity did improve from the 0 generated from the guessing model but it is still quite low at **0.121**.
 
+Here are the most important variables from the random forest.  Total bilirubin as was noted in the introduction is consistently one of the key variables through all of the models:
+
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+imprf <- varImp(model_rf)  
+t <- tibble(term = rownames(imprf$importance), 
+                             importance = imprf$importance$Overall) %>%
+                   mutate(rank = rank(-importance)) %>% arrange(desc(importance))
+t %>% 
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),
+                position = "center",
+                font_size = 10,
+                full_width = FALSE)
+```
+
 #### Over (Up) Sampling
 One of the great features of random forests is that we also have the option to add a sampling component to help control for unbalanced data sets.  With over-sampling, we randomly duplicate samples from the class with fewer records so that the number of samples in each class match. While losing information is avoided by taking this approach, the risk of over-fitting the model is possible. Therefore cross-validation is necessary on each fold independently to get an honest estimate of the model performance.  Below our the results of this approach:
 
@@ -430,6 +446,21 @@ results %>%
                 font_size = 10,
                 full_width = FALSE)
 ```  
+
+And these are the most important variables from the over-sampling random forest:
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+imprfu <- varImp(model_rf_up)  
+t1 <- tibble(term = rownames(imprfu$importance), 
+                             importance = imprfu$importance$Overall) %>%
+                   mutate(rank = rank(-importance)) %>% arrange(desc(importance))
+t1 %>% 
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),
+                position = "center",
+                font_size = 10,
+                full_width = FALSE)
+```
 
 With the over-sampling approach, the overall AUPRC is less than the original random forest at **0.647.**  The effect of the sampling can be clearly seen looking at the sensitivity and specificity.  The specificity markedly increases from **0.121** to **0.364**, but this was at the expense of the sensitivity which correspondingly decreased from **0.877** to **0.815.**
 
@@ -480,6 +511,22 @@ results %>%
                 font_size = 10,
                 full_width = FALSE)
 ```
+
+And here are the variable importance results:
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+imprfd <- varImp(model_rf_down)  
+t2 <- tibble(term = rownames(imprfd$importance), 
+             importance = imprfd$importance$Overall) %>%
+  mutate(rank = rank(-importance)) %>% arrange(desc(importance))
+t2 %>% 
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),
+                position = "center",
+                font_size = 10,
+                full_width = FALSE)
+```
+
 Under-sampling really shows the effect that sampling can have on an unbalanced data set, as the specificity skyrockets all the way up to **0.758.** Unfortunately, the sensitivity falls down to **0.667.** The AUPRC also falls considerably to **0.599.**  
 
 #### ROSE Sampling
@@ -530,6 +577,22 @@ results %>%
                 font_size = 10,
                 full_width = FALSE)
 ```  
+
+And here is the variable importance results:
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+imprfr <- varImp(model_rf_rose)  
+t3 <- tibble(term = rownames(imprfr$importance), 
+             importance = imprfr$importance$Overall) %>%
+  mutate(rank = rank(-importance)) %>% arrange(desc(importance))
+t3 %>% 
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),
+                position = "center",
+                font_size = 10,
+                full_width = FALSE)
+```
+
 The ROSE sampling approach had an even stronger effect on increasing the specificity **(0.818**), but also had the strongest effect on decreasing the sensitivity  to **0.543.** The overall AUPRC **(0.621)** did increase back up versus the under-sampling method, but is still considerably less than over-sampling and original random forest models.
 
 #### SMOTE Sampling
@@ -579,6 +642,22 @@ results %>%
                 font_size = 10,
                 full_width = FALSE)
 ```
+
+And here are the variable importance results:
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+imprfs <- varImp(model_rf_smote)  
+t4 <- tibble(term = rownames(imprfs$importance), 
+             importance = imprfs$importance$Overall) %>%
+  mutate(rank = rank(-importance)) %>% arrange(desc(importance))
+t4 %>% 
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),
+                position = "center",
+                font_size = 10,
+                full_width = FALSE)
+```
+
 The SMOTE sampling approach generated the highest accuracy of the random forest approaches at **0.702**, but unfortunately the AUPRC was the second lowest at **0.610.**
 
 
@@ -618,7 +697,7 @@ results %>%
                 full_width = FALSE)
 ```
 
-The logistic regression generates an AUPRC higher than all but our original random forest model, however it did best that model in overall accuracy.
+The logistic regression generates an AUPRC higher than all but our original random forest model, however it did best that model in overall accuracy.  
 
 
 ### K-Nearest Neighbors

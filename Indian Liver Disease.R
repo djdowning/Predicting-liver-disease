@@ -289,6 +289,16 @@ results %>%
                  full_width = FALSE)
 
 
+imprf <- varImp(model_rf)  
+t <- tibble(term = rownames(imprf$importance), 
+                             importance = imprf$importance$Overall) %>%
+                   mutate(rank = rank(-importance)) %>% arrange(desc(importance))
+t %>% 
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),
+                position = "center",
+                font_size = 10,
+                full_width = FALSE)
 #####################################################################################
 #RANDOM FOREST - UP
 #####################################################################################
@@ -336,6 +346,17 @@ results %>%
                 font_size = 10,
                 full_width = FALSE)
 
+
+imprfu <- varImp(model_rf_up)  
+t1 <- tibble(term = rownames(imprfu$importance), 
+             importance = imprfu$importance$Overall) %>%
+  mutate(rank = rank(-importance)) %>% arrange(desc(importance))
+t1 %>% 
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),
+                position = "center",
+                font_size = 10,
+                full_width = FALSE)
 #####################################################################################
 #RANDOM FOREST - DOWN
 #####################################################################################
@@ -381,6 +402,17 @@ results %>%
                 position = "center",
                 font_size = 10,
                 full_width = FALSE)
+
+imprfd <- varImp(model_rf_down)  
+t2 <- tibble(term = rownames(imprfd$importance), 
+             importance = imprfd$importance$Overall) %>%
+  mutate(rank = rank(-importance)) %>% arrange(desc(importance))
+t2 %>% 
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),
+                position = "center",
+                font_size = 10,
+                full_width = FALSE)
 #####################################################################################
 #RANDOM FOREST - ROSE
 #####################################################################################
@@ -421,6 +453,18 @@ results <- bind_rows(results,
                             AUPRC=AUPRCv[[3]]))
 
 results %>% 
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),
+                position = "center",
+                font_size = 10,
+                full_width = FALSE)
+
+
+imprfr <- varImp(model_rf_rose)  
+t3 <- tibble(term = rownames(imprfr$importance), 
+             importance = imprfr$importance$Overall) %>%
+  mutate(rank = rank(-importance)) %>% arrange(desc(importance))
+t3 %>% 
   kable() %>%
   kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),
                 position = "center",
@@ -474,6 +518,16 @@ results %>%
                 full_width = FALSE)
 
 
+imprfs <- varImp(model_rf_smote)  
+t4 <- tibble(term = rownames(imprfs$importance), 
+             importance = imprfs$importance$Overall) %>%
+  mutate(rank = rank(-importance)) %>% arrange(desc(importance))
+t4 %>% 
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),
+                position = "center",
+                font_size = 10,
+                full_width = FALSE)
 
 #####################################################################################
 #GLM
