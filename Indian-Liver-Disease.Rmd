@@ -447,7 +447,7 @@ results %>%
                 full_width = FALSE)
 ```  
 
-And these are the most important variables from the over-sampling random forest.  Note here total bilirubin in the top spot.
+And these are the most important variables from the over-sampling random forest:  
 
 ```{r, echo=FALSE, message=FALSE, warning=FALSE}
 imprfu <- varImp(model_rf_up)  
@@ -578,7 +578,7 @@ results %>%
                 full_width = FALSE)
 ```  
 
-And here is the variable importance results:
+And here is the variable importance results, with total bilirubin moving into the top spot:
 
 ```{r, echo=FALSE, message=FALSE, warning=FALSE}
 imprfr <- varImp(model_rf_rose)  
@@ -643,7 +643,7 @@ results %>%
                 full_width = FALSE)
 ```
 
-And here are the variable importance results:
+And here are the variable importance results, with bilirubin again ranked number one:
 
 ```{r, echo=FALSE, message=FALSE, warning=FALSE}
 imprfs <- varImp(model_rf_smote)  
@@ -697,7 +697,7 @@ results %>%
                 full_width = FALSE)
 ```
 
-The logistic regression generates an AUPRC higher than all but our original random forest model, however it did best that model in overall accuracy.  
+The logistic regression generates an AUPRC higher than all but our original random forest model, however it did best that model in overall accuracy. A closer examination of the variable importance will be presented in the results section. 
 
 
 ### K-Nearest Neighbors
